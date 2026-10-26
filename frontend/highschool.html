@@ -147,6 +147,11 @@
     if (tg && sb) tg.addEventListener("click", function () { sb.classList.toggle("open"); });
     var DAYS = ["", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"];
     var me = null, canEdit = false, paid = {}, classMap = {}, fee = 50, payClass = null;
+    var ASSIGNED = {};
+    function pickSubject() {
+      var v = document.getElementById("t-subject").value.trim(), a = ASSIGNED[v];
+      return a ? { subject: a.subject, teacher: a.name } : { subject: v, teacher: TEACHERS[v] || "" };
+    }
     var SLOTS = ["08:00-09:00", "09:30-10:30", "11:00-12:00", "14:00-15:00", "15:30-16:00"];
     var TEACHERS = { "English": "Christine Njoroge", "Mathematics": "Roy Njuki", "Biology": "Geoffrey Kimani", "Chemistry": "Henry Muigai", "Physics": "Maryanne Atieno" };
     var SLOT_LABELS = { "08:00-09:00": "8:00 - 9:00", "09:30-10:30": "9:30 - 10:30", "11:00-12:00": "11:00 - 12:00", "14:00-15:00": "2:00 - 3:00", "15:30-16:00": "3:30 - 4:00" };
@@ -242,7 +247,7 @@
         .catch(function () { msg.style.color = "#b3261e"; msg.textContent = "Could not reach the server."; btn.disabled = false; });
     });
 
-    function ownerSpan(e) { var t = TEACHERS[e.subject] || e.teacher; return t ? "<span>" + esc(t) + "</span>" : ""; }
+    function ownerSpan(e) { var t = e.teacher || TEACHERS[e.subject]; return t ? "<span>" + esc(t) + "</span>" : ""; }
     function fmtDate(s) {
       if (!s) return "";
       var p = String(s).split("-");
@@ -298,7 +303,7 @@
     document.getElementById("t-add").addEventListener("click", function () {
       var msg = document.getElementById("hs-msg");
       var body = { day_no: document.getElementById("t-day").value, class_date: document.getElementById("t-date").value, start_time: (document.getElementById("t-slot").value.split("|")[0] || ""), end_time: (document.getElementById("t-slot").value.split("|")[1] || ""),
-        subject: document.getElementById("t-subject").value.trim(), teacher: (TEACHERS[document.getElementById("t-subject").value] || ""), notes: document.getElementById("t-notes").value.trim() };
+        subject: pickSubject().subject, teacher: pickSubject().teacher, notes: document.getElementById("t-notes").value.trim() };
       j("/api/hs/timetable/add", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
         .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
         .then(function (res) {
@@ -345,6 +350,14 @@
         var sel = document.getElementById("as-user"), keep = sel.value;
         sel.innerHTML = '<option value="">Choose a trainer</option>' + d.trainers.map(function (t) { return '<option value="' + t.id + '">' + esc(t.full_name) + "</option>"; }).join("");
         sel.value = keep;
+        ASSIGNED = {};
+        var withSub = d.assigned.filter(function (a) { return a.subject; });
+        withSub.forEach(function (a) { ASSIGNED[String(a.user_id)] = { subject: a.subject, name: a.full_name }; });
+        var ts = document.getElementById("t-subject"), tk = ts.value;
+        if (withSub.length) {
+          ts.innerHTML = '<option value="">Subject</option>' + withSub.map(function (a) { return '<option value="' + a.user_id + '">' + esc(a.subject) + " - " + esc(a.full_name) + "</option>"; }).join("");
+          ts.value = tk;
+        }
         document.getElementById("as-list").innerHTML = d.assigned.length
           ? '<table class="hs-ptable"><thead><tr><th>Trainer</th><th>Subject</th><th></th></tr></thead><tbody>' +
             d.assigned.map(function (a) { return "<tr><td><b>" + esc(a.full_name) + "</b></td><td>" + (esc(a.subject) || '<span class="hs-meta">Not set</span>') + '</td><td><button class="hs-del" data-rm="' + a.user_id + '">Remove</button></td></tr>'; }).join("") + "</tbody></table>"
