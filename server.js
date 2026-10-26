@@ -2935,6 +2935,54 @@ app.post("/api/hs/assignments/:id/remove", requireLogin, requireRole("admin"), a
   }
 });
 
+app.get("/api/hs/students", requireLogin, requireAnyRole(["trainer", "admin"]), async (req, res) => {
+  try {
+    const course = await hsCanEdit(req.session.user);
+    if (!course) return res.status(403).json({ error: "Not allowed." });
+    const [rows] = await pool.query("SELECT h.*, u.full_name, u.phone FROM hs_students h JOIN users u ON u.id = h.user_id ORDER BY u.full_name");
+    const [att] = await pool.query(
+      "SELECT a.user_id, COUNT(*) AS lessons, MAX(a.last_seen) AS last_seen FROM live_attendance a " +
+      "JOIN live_classes lc ON lc.id = a.class_id WHERE lc.course_id = ? GROUP BY a.user_id", [course.id]);
+    const [pay] = await pool.query(
+      "SELECT p.user_id, SUM(p.status = 'approved') AS approved, SUM(p.status = 'pending') AS pending FROM hs_class_payments p " +
+      "JOIN live_classes lc ON lc.id = p.class_id WHERE lc.course_id = ? GROUP BY p.user_id", [course.id]);
+    const [[tot]] = await pool.query("SELECT COUNT(*) AS n FROM live_classes WHERE course_id = ? AND status IN ('live', 'ended')", [course.id]);
+    const aMap = {}, pMap = {};
+    att.forEach(function (a) { aMap[a.user_id] = a; });
+    pay.forEach(function (p) { pMap[p.user_id] = p; });
+    const students = rows.map(function (r) {
+      const a = aMap[r.user_id] || {}, p = pMap[r.user_id] || {};
+      return {
+        id: r.user_id, full_name: r.full_name, phone: r.phone,
+        school: r.school || null, level: r.form_level || r.level || r.class_level || null,
+        registered_at: r.created_at || r.registered_at || null,
+        lessons: Number(a.lessons || 0), last_seen: a.last_seen || null,
+        approved: Number(p.approved || 0), pending: Number(p.pending || 0)
+      };
+    });
+    res.json({ students: students, total_classes: Number(tot.n || 0) });
+  } catch (err) {
+    console.error("HS students error:", err.message);
+    res.status(500).json({ error: "Could not load students." });
+  }
+});
+
+app.get("/api/hs/students/:id", requireLogin, requireAnyRole(["trainer", "admin"]), async (req, res) => {
+  try {
+    const course = await hsCanEdit(req.session.user);
+    if (!course) return res.status(403).json({ error: "Not allowed." });
+    const [[st]] = await pool.query("SELECT u.id, u.full_name, u.phone FROM users u JOIN hs_students h ON h.user_id = u.id WHERE u.id = ?", [req.params.id]);
+    if (!st) return res.status(404).json({ error: "Student not found." });
+    const [lessons] = await pool.query(
+      "SELECT lc.id, lc.title, lc.scheduled_at, lc.status, a.joined_at, a.last_seen FROM live_attendance a " +
+      "JOIN live_classes lc ON lc.id = a.class_id WHERE a.user_id = ? AND lc.course_id = ? ORDER BY a.joined_at DESC LIMIT 300", [st.id, course.id]);
+    res.json({ student: st, lessons: lessons });
+  } catch (err) {
+    console.error("HS student detail error:", err.message);
+    res.status(500).json({ error: "Could not load that student." });
+  }
+});
+
 app.listen(PORT, () => {
   console.log("Spark Technologies server running at http://localhost:" + PORT);
   ensureAdminAccount();

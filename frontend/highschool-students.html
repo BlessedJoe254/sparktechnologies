@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>All Students - Spark Technologies</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    .hs-banner { background:linear-gradient(135deg,#0f1c16,#1f8a5b); color:#fff; border-radius:18px; padding:22px 24px; margin:0 0 22px 0; }
+    .hs-banner h2 { margin:0 0 4px; font-size:22px; color:#fff; } .hs-banner p { margin:0; opacity:.85; font-size:14px; }
+    .st-stats { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; margin:0 0 18px; }
+    .st-stat { background:#fff; border:1px solid rgba(0,0,0,.10); border-radius:14px; padding:14px 16px; box-shadow:0 1px 3px rgba(15,28,22,.06); }
+    .st-stat b { display:block; font-size:26px; color:#1f8a5b; line-height:1.1; }
+    .st-stat span { display:block; font-size:12px; color:#666; margin-top:4px; }
+    .st-tools { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:0 0 12px; }
+    .st-tools input { flex:1 1 240px; padding:11px 13px; border:1px solid rgba(0,0,0,.25); border-radius:12px; font:inherit; background:#fff; color:#111; min-width:0; }
+    .st-tools span { font-size:13px; color:#555; }
+    .st-wrap { background:#fff; border:1px solid rgba(0,0,0,.10); border-radius:14px; overflow-x:auto; box-shadow:0 1px 3px rgba(15,28,22,.06); }
+    .st-table { width:100%; border-collapse:collapse; font-size:13.5px; color:#222; }
+    .st-table th { background:#eef5f1; color:#1b5e3f; text-align:left; padding:11px 12px; font-size:11.5px; letter-spacing:.6px; text-transform:uppercase; white-space:nowrap; }
+    .st-table td { padding:11px 12px; border-top:1px solid rgba(0,0,0,.07); vertical-align:middle; }
+    .st-table tr:hover td { background:#fafcfb; }
+    .st-pill { display:inline-block; min-width:26px; text-align:center; font-weight:700; font-size:13px; padding:3px 9px; border-radius:20px; background:#e6efe9; color:#1b5e3f; }
+    .st-pill.zero { background:#f1f1f1; color:#777; }
+    .st-view { border:1px solid rgba(0,0,0,.2); background:#fff; color:#1b5e3f; border-radius:9px; padding:6px 12px; cursor:pointer; font:inherit; font-size:12.5px; }
+    .hs-empty { font-size:14px; color:#666; padding:14px 16px; }
+    #st-modal { display:none; position:fixed; inset:0; z-index:100; background:rgba(0,0,0,.6); align-items:center; justify-content:center; padding:16px; }
+    .st-card { background:#fff; border-radius:18px; padding:22px; width:100%; max-width:560px; max-height:90vh; overflow-y:auto; color:#14201a; }
+    .st-card h3 { margin:0 0 2px; font-size:20px; } .st-card .sub { font-size:13px; color:#555; margin:0 0 12px; }
+    .st-less { border:1px solid rgba(0,0,0,.10); border-radius:12px; padding:10px 12px; margin:0 0 8px; }
+    .st-less b { color:#111; } .st-less div { font-size:12.5px; color:#555; margin-top:2px; }
+    @media (max-width: 700px) { .st-stats { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
+  </style>
+</head>
+<body>
+  <button class="sidebar-toggle" aria-label="Toggle menu">&#9776;</button>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar__logo"><img src="assets/logo-sidebar.png" alt="Spark Technologies"></div>
+      <nav>
+        <span class="nav-label">MY PROGRAM</span>
+        <a class="nav-link" href="highschool-trainer.html"><span class="dot"></span> Trainer tools</a>
+        <a class="nav-link" href="highschool.html"><span class="dot"></span> Timetable &amp; payments</a>
+        <a class="nav-link active" href="highschool-students.html"><span class="dot"></span> All students</a>
+        <span class="nav-label">ACCOUNT</span>
+        <a class="nav-link" href="#" id="st-logout"><span class="dot"></span> Log out</a>
+      </nav>
+      <div class="sidebar__footer">(c) 2026 Spark Technologies</div>
+    </aside>
+    <main class="main">
+      <div class="topbar"><div class="topbar__title"><p class="eyebrow">HOLIDAY PROGRAM</p><h1>All students</h1></div></div>
+      <div class="hs-banner"><h2>Every student registered for tuition</h2><p>See their details and how many lessons each one has learnt.</p></div>
+
+      <div id="st-blocked" class="hs-empty" style="display:none;"></div>
+      <div id="st-main" style="display:none;">
+        <div class="st-stats">
+          <div class="st-stat"><b id="sx-total">-</b><span>Students registered</span></div>
+          <div class="st-stat"><b id="sx-held">-</b><span>Classes held</span></div>
+          <div class="st-stat"><b id="sx-joins">-</b><span>Lesson joins in total</span></div>
+          <div class="st-stat"><b id="sx-active">-</b><span>Students who have attended</span></div>
+        </div>
+        <div class="st-tools">
+          <input id="st-q" type="text" placeholder="Search by name, phone or school">
+          <span id="st-count"></span>
+        </div>
+        <div class="st-wrap" id="st-box"><div class="hs-empty">Loading...</div></div>
+      </div>
+    </main>
+  </div>
+
+  <div id="st-modal"><div class="st-card" id="st-detail"></div></div>
+
+  <script>
+  (function () {
+    var tg = document.querySelector(".sidebar-toggle"), sb = document.querySelector(".sidebar");
+    if (tg && sb) tg.addEventListener("click", function () { sb.classList.toggle("open"); });
+    var all = [], totalClasses = 0, byId = {};
+    function $(id) { return document.getElementById(id); }
+    function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
+    function j(url, opt) { return fetch(url, Object.assign({ credentials: "include" }, opt || {})); }
+    function dDate(v) { var w = new Date(v); return isNaN(w.getTime()) ? "-" : w.toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }); }
+    function dWhen(v) { var w = new Date(v); return isNaN(w.getTime()) ? "-" : w.toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); }
+    function dTime(v) { var w = new Date(v); return isNaN(w.getTime()) ? "-" : w.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
+
+    $("st-logout").addEventListener("click", function (e) {
+      e.preventDefault();
+      j("/api/logout", { method: "POST" }).then(function () { location.href = "login.html"; });
+    });
+
+    function render() {
+      var q = $("st-q").value.trim().toLowerCase();
+      var list = all.filter(function (s) {
+        return !q || String(s.full_name || "").toLowerCase().indexOf(q) >= 0 || String(s.phone || "").indexOf(q) >= 0 || String(s.school || "").toLowerCase().indexOf(q) >= 0;
+      });
+      $("st-count").textContent = list.length + " of " + all.length + " students";
+      if (!list.length) { $("st-box").innerHTML = '<div class="hs-empty">No students found.</div>'; return; }
+      $("st-box").innerHTML = '<table class="st-table"><thead><tr><th>Student</th><th>Phone</th><th>School</th><th>Level</th><th>Registered</th><th>Lessons learnt</th><th>Last in class</th><th>Paid lessons</th><th></th></tr></thead><tbody>' +
+        list.map(function (s) {
+          byId[s.id] = s;
+          return "<tr><td><b>" + esc(s.full_name) + "</b></td><td>" + esc(s.phone || "-") + "</td><td>" + esc(s.school || "-") + "</td><td>" + esc(s.level || "-") + "</td><td>" + (s.registered_at ? esc(dDate(s.registered_at)) : "-") + "</td>" +
+            '<td><span class="st-pill' + (s.lessons ? "" : " zero") + '">' + s.lessons + "</span> of " + totalClasses + "</td>" +
+            "<td>" + (s.last_seen ? esc(dWhen(s.last_seen)) : "-") + "</td>" +
+            "<td>" + s.approved + (s.pending ? ' <span style="color:#8a6d00;font-size:12px;">(' + s.pending + " pending)</span>" : "") + "</td>" +
+            '<td><button type="button" class="st-view" data-view="' + s.id + '">View</button></td></tr>';
+        }).join("") + "</tbody></table>";
+    }
+
+    function load() {
+      j("/api/hs/students").then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+        if (!d) { $("st-box").innerHTML = '<div class="hs-empty">Could not load students.</div>'; return; }
+        all = d.students || []; totalClasses = d.total_classes || 0;
+        $("sx-total").textContent = all.length;
+        $("sx-held").textContent = totalClasses;
+        $("sx-joins").textContent = all.reduce(function (n, s) { return n + s.lessons; }, 0);
+        $("sx-active").textContent = all.filter(function (s) { return s.lessons > 0; }).length;
+        render();
+      });
+    }
+
+    $("st-q").addEventListener("input", render);
+
+    function closeModal() { $("st-modal").style.display = "none"; }
+    $("st-modal").addEventListener("click", function (e) { if (e.target === $("st-modal") || (e.target.getAttribute && e.target.getAttribute("data-close"))) closeModal(); });
+
+    $("st-box").addEventListener("click", function (e) {
+      var id = e.target.getAttribute && e.target.getAttribute("data-view");
+      if (!id) return;
+      var s = byId[id] || {};
+      $("st-detail").innerHTML = '<h3>' + esc(s.full_name || "Student") + '</h3><p class="sub">Loading...</p>';
+      $("st-modal").style.display = "flex";
+      j("/api/hs/students/" + encodeURIComponent(id)).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+        if (!d) { $("st-detail").innerHTML = '<h3>' + esc(s.full_name || "Student") + '</h3><p class="sub">Could not load this student.</p><button type="button" class="btn btn-ghost" data-close="1">Close</button>'; return; }
+        var mins = 0;
+        var rows = d.lessons.map(function (l) {
+          var a = new Date(l.joined_at), b = new Date(l.last_seen), m = (isNaN(a.getTime()) || isNaN(b.getTime())) ? 0 : Math.max(0, Math.round((b - a) / 60000));
+          mins += m;
+          return '<div class="st-less"><b>' + esc(l.title) + "</b><div>" + esc(dWhen(l.scheduled_at)) + " &middot; joined " + esc(dTime(l.joined_at)) + " - left " + esc(dTime(l.last_seen)) + " &middot; about " + m + " min</div></div>";
+        }).join("");
+        $("st-detail").innerHTML = '<h3>' + esc(d.student.full_name) + '</h3><p class="sub">' + esc(d.student.phone || "") + (s.school ? " &middot; " + esc(s.school) : "") + (s.level ? " &middot; " + esc(s.level) : "") + "</p>" +
+          '<p class="sub"><b>' + d.lessons.length + "</b> lesson" + (d.lessons.length === 1 ? "" : "s") + " learnt &middot; about <b>" + mins + "</b> minutes in class</p>" +
+          (rows || '<div class="hs-empty" style="padding:6px 0;">This student has not joined a live class yet.</div>') +
+          '<div style="margin-top:12px;"><button type="button" class="btn btn-ghost" data-close="1">Close</button></div>';
+      });
+    });
+
+    j("/api/session").then(function (r) { return r.json(); }).then(function (s) {
+      if (!s.user) { location.href = "login.html"; return null; }
+      if (s.user.role !== "trainer" && s.user.role !== "admin") { location.href = "highschool.html"; return null; }
+      return j("/api/hs/me").then(function (r) { return r.json(); });
+    }).then(function (m) {
+      if (!m) return;
+      if (!m.course_id || !m.can_edit) { var b = $("st-blocked"); b.style.display = "block"; b.textContent = "You are not assigned to this program yet. Ask the admin to assign you."; return; }
+      $("st-main").style.display = "block";
+      load();
+      setInterval(load, 30000);
+    });
+  })();
+  </script>
+  <script src="/js/pwa.js"></script>
+</body>
+</html>
