@@ -66,7 +66,44 @@ app.use(session({
 }));
 const frontendPath = path.join(__dirname, "frontend");
 if (fs.existsSync(frontendPath)) {
-  app.use(express.static(frontendPath));
+  // ---------- HS_ONLY_GUARD: high school students only see the high school section ----------
+const HS_ONLY_PAGES = ["/highschool.html", "/highschool-login.html", "/highschool-register.html", "/class-room.html"];
+const HS_ONLY_API = ["/api/hs/", "/api/session", "/api/logout", "/api/login", "/api/login-highschool", "/api/register-highschool", "/api/forgot-password", "/api/reset-password", "/api/contact", "/api/notes/"];
+const hsOnlyCache = new Map();
+async function isHsOnly(user) {
+  if (!user || user.role !== "student") return false;
+  const c = hsOnlyCache.get(user.id);
+  if (c && Date.now() - c.t < 60000) return c.v;
+  let v = false;
+  try {
+    const [r] = await pool.query("SELECT 1 FROM hs_students WHERE user_id = ? LIMIT 1", [user.id]);
+    v = r.length > 0;
+  } catch (e) { v = false; }
+  hsOnlyCache.set(user.id, { v: v, t: Date.now() });
+  return v;
+}
+app.use(async (req, res, next) => {
+  try {
+    const u = req.session && req.session.user;
+    if (!u || u.role !== "student") return next();
+    const p = req.path.toLowerCase();
+    const isApi = p.startsWith("/api/");
+    const isPage = !isApi && (p === "/" || p.endsWith(".html") || !/\.[a-z0-9]+$/.test(p));
+    if (!isApi && !isPage) return next();
+    if (!(await isHsOnly(u))) return next();
+    if (isPage) {
+      if (HS_ONLY_PAGES.indexOf(p) >= 0) return next();
+      if (req.method !== "GET" && req.method !== "HEAD") return next();
+      return res.redirect("/highschool.html");
+    }
+    if (HS_ONLY_API.some(function (a) { return p === a || (a.endsWith("/") && p.startsWith(a)); })) return next();
+    if (req.method === "POST" && /^\/api\/classes\/[^\/]+\/(join|attend)$/.test(p)) return next();
+    return res.status(403).json({ error: "Your account only has access to the High School program." });
+  } catch (e) {
+    next();
+  }
+});
+app.use(express.static(frontendPath));
 }
 app.use("/team-images", express.static(teamImagesDir));
 
