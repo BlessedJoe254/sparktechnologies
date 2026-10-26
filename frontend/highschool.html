@@ -99,6 +99,20 @@
       </div>
       <div class="hs-wrap" id="hs-table"><div class="hs-empty">Loading...</div></div>
 
+      <div id="hs-assignsec" style="display:none;">
+        <h2 class="hs-h">Assign trainers and subjects</h2>
+        <p class="hs-sub">Pick a registered trainer and the subject they will teach in this program. Assign the same trainer again to change their subject.</p>
+        <div class="hs-edit" style="display:block;">
+          <div class="row">
+            <select id="as-user"><option value="">Choose a trainer</option></select>
+            <input id="as-subject" type="text" placeholder="Subject, e.g. Mathematics" maxlength="60">
+            <button class="btn btn-primary" id="as-add" type="button">Assign</button>
+          </div>
+          <div id="as-msg"></div>
+        </div>
+        <div class="hs-wrap" id="as-list"></div>
+      </div>
+
       <div id="hs-paysec">
         <h2 class="hs-h">Lesson payments</h2>
         <p class="hs-sub" id="hs-paysum"></p>
@@ -323,6 +337,37 @@
       j("/api/hs/payments/" + id + "/" + act, { method: "POST" }).then(loadPayments);
     });
 
+    function loadAssign() {
+      if (!me || me.role !== "admin") return;
+      j("/api/hs/assignments").then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+        if (!d) return;
+        document.getElementById("hs-assignsec").style.display = "block";
+        var sel = document.getElementById("as-user"), keep = sel.value;
+        sel.innerHTML = '<option value="">Choose a trainer</option>' + d.trainers.map(function (t) { return '<option value="' + t.id + '">' + esc(t.full_name) + "</option>"; }).join("");
+        sel.value = keep;
+        document.getElementById("as-list").innerHTML = d.assigned.length
+          ? '<table class="hs-ptable"><thead><tr><th>Trainer</th><th>Subject</th><th></th></tr></thead><tbody>' +
+            d.assigned.map(function (a) { return "<tr><td><b>" + esc(a.full_name) + "</b></td><td>" + (esc(a.subject) || '<span class="hs-meta">Not set</span>') + '</td><td><button class="hs-del" data-rm="' + a.user_id + '">Remove</button></td></tr>'; }).join("") + "</tbody></table>"
+          : '<div class="hs-empty">No trainers assigned yet.</div>';
+      });
+    }
+    document.getElementById("as-add").addEventListener("click", function () {
+      var msg = document.getElementById("as-msg");
+      var body = { user_id: document.getElementById("as-user").value, subject: document.getElementById("as-subject").value.trim() };
+      j("/api/hs/assignments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          msg.style.color = res.ok ? "#1b5e3f" : "#b3261e";
+          msg.textContent = res.ok ? "Trainer assigned." : (res.d.error || "Could not assign.");
+          if (res.ok) { document.getElementById("as-user").value = ""; document.getElementById("as-subject").value = ""; loadAssign(); }
+        });
+    });
+    document.getElementById("as-list").addEventListener("click", function (e) {
+      var id = e.target.getAttribute && e.target.getAttribute("data-rm");
+      if (!id || !confirm("Remove this trainer from the program?")) return;
+      j("/api/hs/assignments/" + id + "/remove", { method: "POST" }).then(loadAssign);
+    });
+
     j("/api/session").then(function (r) { return r.json(); }).then(function (s) {
       if (!s.user) { location.href = "highschool-login.html"; return null; }
       document.getElementById("hs-hello").textContent = "Welcome, " + s.user.full_name;
@@ -335,7 +380,7 @@
       if (me.role === "trainer" || me.role === "admin") document.getElementById("hs-trainer-link").style.display = "block"; if (me.role === "admin") document.getElementById("hs-edit").style.display = "block"; if (canEdit) { document.getElementById("hs-feenote").style.display = "none"; }
       else document.getElementById("hs-howpay").style.display = "block";
       loadPaid(function () { loadClasses(); });
-      loadTable(); loadPayments();
+      loadTable(); loadPayments(); loadAssign();
       setInterval(function () { loadPaid(loadClasses); loadPayments(); loadTable(); }, 20000);
     });
   })();

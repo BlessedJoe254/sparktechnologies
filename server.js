@@ -2152,12 +2152,12 @@ app.post("/api/classes/create", requireLogin, requireAnyRole(["trainer", "admin"
 
     const [[course]] = await pool.query("SELECT id, trainer_id FROM courses WHERE id = ?", [course_id]);
     if (!course) return res.status(404).json({ error: "Course not found." });
-    if (u.role === "trainer" && course.trainer_id !== u.id) return res.status(403).json({ error: "This is not your course." });
+    if (u.role === "trainer" && course.trainer_id !== u.id && !(await hsIsAssigned(u.id, course.id))) return res.status(403).json({ error: "This is not your course." });
 
     const room = "spark-" + crypto.randomBytes(8).toString("hex");
     await pool.query(
       "INSERT INTO live_classes (course_id, trainer_id, title, scheduled_at, room) VALUES (?, ?, ?, ?, ?)",
-      [course.id, course.trainer_id || u.id, String(title).trim().slice(0, 200), when.toISOString(), room]
+      [course.id, (u.role === "trainer" ? u.id : (course.trainer_id || u.id)), String(title).trim().slice(0, 200), when.toISOString(), room]
     );
     res.json({ success: true });
   } catch (err) {
@@ -2278,11 +2278,11 @@ app.post("/api/course-classes/create", requireLogin, requireAnyRole(["trainer", 
     if (when.getTime() < Date.now() - 60 * 60 * 1000) return res.status(400).json({ error: "Pick a date and time in the future." });
     const [[course]] = await pool.query("SELECT id, trainer_id FROM courses WHERE id = ?", [course_id]);
     if (!course) return res.status(404).json({ error: "Course not found." });
-    if (u.role === "trainer" && course.trainer_id !== u.id) return res.status(403).json({ error: "This is not your course." });
+    if (u.role === "trainer" && course.trainer_id !== u.id && !(await hsIsAssigned(u.id, course.id))) return res.status(403).json({ error: "This is not your course." });
     const room = "spark-" + crypto.randomBytes(8).toString("hex");
     await pool.query(
       "INSERT INTO live_classes (course_id, trainer_id, title, scheduled_at, room, notes) VALUES (?, ?, ?, ?, ?, ?)",
-      [course.id, course.trainer_id || u.id, String(title).trim().slice(0, 200), when.toISOString(), room, notes ? String(notes).trim().slice(0, 500) : null]
+      [course.id, (u.role === "trainer" ? u.id : (course.trainer_id || u.id)), String(title).trim().slice(0, 200), when.toISOString(), room, notes ? String(notes).trim().slice(0, 500) : null]
     );
     res.json({ success: true });
   } catch (err) {
@@ -2576,7 +2576,7 @@ app.get("/api/hs/me", requireLogin, async (req, res) => {
     const course = await hsCourse();
     if (!course) return res.json({ is_hs: false, only_hs: false });
     if (u.role !== "student") {
-      return res.json({ role: u.role, is_hs: false, only_hs: false, course_id: course.id, title: course.title, can_edit: u.role === "admin" || course.trainer_id === u.id });
+      return res.json({ role: u.role, is_hs: false, only_hs: false, course_id: course.id, title: course.title, can_edit: u.role === "admin" || course.trainer_id === u.id || (u.role === "trainer" && await hsIsAssigned(u.id, course.id)) });
     }
     const [rows] = await pool.query("SELECT course_id, has_paid, payment_code FROM enrollments WHERE user_id = ?", [u.id]);
     const mine = rows.find(r => r.course_id === course.id);
@@ -2613,6 +2613,7 @@ async function hsCanEdit(u) {
   const course = await hsCourse();
   if (!course) return null;
   if (u.role === "admin" || (u.role === "trainer" && course.trainer_id === u.id)) return course;
+  if (u.role === "trainer" && (await hsIsAssigned(u.id, course.id))) return course;
   return null;
 }
 
@@ -2690,7 +2691,7 @@ app.get("/api/hs/classes", requireLogin, async (req, res) => {
       return res.status(403).json({ error: "Not allowed." });
     }
     const [classes] = await pool.query(
-      (u.role === "admin" ? "SELECT lc.id, lc.title, lc.scheduled_at, lc.status, lc.notes, (SELECT full_name FROM users WHERE id = lc.trainer_id) AS trainer_name FROM live_classes lc WHERE lc.course_id = ? AND lc.status <> 'cancelled' ORDER BY lc.scheduled_at DESC LIMIT 80" : "SELECT id, title, scheduled_at, status, notes FROM live_classes WHERE course_id = ? AND status IN ('scheduled', 'live') ORDER BY scheduled_at ASC LIMIT 30"),
+      (u.role === "admin" ? "SELECT lc.id, lc.title, lc.scheduled_at, lc.status, lc.notes, (SELECT CONCAT(u2.full_name, IFNULL(CONCAT(' (', NULLIF(h.subject, ''), ')'), '')) FROM users u2 LEFT JOIN hs_trainers h ON h.user_id = u2.id WHERE u2.id = lc.trainer_id) AS trainer_name FROM live_classes lc WHERE lc.course_id = ? AND lc.status <> 'cancelled' ORDER BY lc.scheduled_at DESC LIMIT 80" : "SELECT id, title, scheduled_at, status, notes FROM live_classes WHERE course_id = ? AND status IN ('scheduled', 'live') ORDER BY scheduled_at ASC LIMIT 30"),
       [course.id]
     );
     res.json({ classes });
@@ -2871,6 +2872,66 @@ app.get("/api/hs/attendance", requireLogin, requireAnyRole(["trainer", "admin"])
   } catch (err) {
     console.error("HS attendance error:", err.message);
     res.status(500).json({ error: "Could not load attendance." });
+  }
+});
+
+async function hsIsAssigned(userId, courseId) {
+  try {
+    const hc = await hsCourse();
+    if (!hc || hc.id !== courseId) return false;
+    const [r] = await pool.query("SELECT 1 FROM hs_trainers WHERE user_id = ?", [userId]);
+    return r.length > 0;
+  } catch (err) { return false; }
+}
+
+async function ensureHsTrainers() {
+  try {
+    await pool.query(
+      "CREATE TABLE IF NOT EXISTS hs_trainers (" +
+      "user_id INT PRIMARY KEY, subject VARCHAR(60) NOT NULL DEFAULT '', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+    );
+    const [[c]] = await pool.query("SELECT COUNT(*) AS n FROM hs_trainers");
+    if (c.n === 0) {
+      const hc = await hsCourse();
+      if (hc && hc.trainer_id) await pool.query("INSERT IGNORE INTO hs_trainers (user_id, subject) VALUES (?, '')", [hc.trainer_id]);
+    }
+  } catch (err) { console.warn("hs_trainers setup failed:", err.message); }
+}
+ensureHsTrainers();
+
+app.get("/api/hs/assignments", requireLogin, requireRole("admin"), async (req, res) => {
+  try {
+    const [trainers] = await pool.query("SELECT id, full_name FROM users WHERE role = 'trainer' ORDER BY full_name");
+    const [assigned] = await pool.query("SELECT h.user_id, h.subject, u.full_name FROM hs_trainers h JOIN users u ON u.id = h.user_id ORDER BY u.full_name");
+    res.json({ trainers: trainers, assigned: assigned });
+  } catch (err) {
+    console.error("HS assignments error:", err.message);
+    res.status(500).json({ error: "Could not load trainers." });
+  }
+});
+
+app.post("/api/hs/assignments", requireLogin, requireRole("admin"), async (req, res) => {
+  try {
+    const userId = Number(req.body.user_id);
+    const subject = String(req.body.subject || "").trim().slice(0, 60);
+    if (!userId || !subject) return res.status(400).json({ error: "Choose a trainer and type a subject." });
+    const [u] = await pool.query("SELECT id FROM users WHERE id = ? AND role = 'trainer'", [userId]);
+    if (!u.length) return res.status(400).json({ error: "That person is not a trainer." });
+    await pool.query("INSERT INTO hs_trainers (user_id, subject) VALUES (?, ?) ON DUPLICATE KEY UPDATE subject = VALUES(subject)", [userId, subject]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("HS assign error:", err.message);
+    res.status(500).json({ error: "Could not assign that trainer." });
+  }
+});
+
+app.post("/api/hs/assignments/:id/remove", requireLogin, requireRole("admin"), async (req, res) => {
+  try {
+    await pool.query("DELETE FROM hs_trainers WHERE user_id = ?", [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("HS unassign error:", err.message);
+    res.status(500).json({ error: "Could not remove that trainer." });
   }
 });
 
