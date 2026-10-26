@@ -118,7 +118,7 @@
   (function () {
     var tg = document.querySelector(".sidebar-toggle"), sb = document.querySelector(".sidebar");
     if (tg && sb) tg.addEventListener("click", function () { sb.classList.toggle("open"); });
-    var me = null, cid = null, group = null;
+    var me = null, cid = null, group = null; var isAdmin = false;
     function $(id) { return document.getElementById(id); }
     function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
     function j(url, opt) { return fetch(url, Object.assign({ credentials: "include" }, opt || {})); }
@@ -192,6 +192,19 @@
     document.addEventListener("click", function (e) {
       var t = e.target;
       if (!t.getAttribute) return;
+      var delId = t.getAttribute("data-del");
+      if (delId) {
+        if (!confirm("Delete this class and its attendance records? This cannot be undone.")) return;
+        var doDel = function (force) {
+          post("/api/classes/" + delId + "/delete", { force: force }).then(function (r) {
+            if (r.ok) { loadClasses(); loadAttend(); loadStudents(); return; }
+            if (r.d && r.d.payments && !force) { if (confirm(r.d.error + " Delete anyway?")) doDel(true); return; }
+            alert((r.d && r.d.error) || "Could not delete the class.");
+          });
+        };
+        doDel(false);
+        return;
+      }
       var endId = t.getAttribute("data-end");
       if (endId) {
         if (!confirm("End this class? Students will no longer be able to join.")) return;
@@ -271,20 +284,21 @@
             var w = new Date(s.joined_at);
             var l = new Date(s.last_seen), nowIn = c.status === "live" && Number(s.idle) < 40; function tm(x) { return isNaN(x.getTime()) ? "" : x.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } return esc(s.name) + " (joined " + tm(w) + (nowIn ? " - in class now" : " - left " + tm(l)) + ")";
           }).join(", ");
-          return '<div class="hs-card" style="display:block;"><b>' + esc(c.title) + '</b> <span class="hs-meta">' + esc(fmtWhen(c.scheduled_at)) + ' &middot; ' + esc(c.status) + ' &middot; ' + c.students.length + ' joined</span>' +
+          return '<div class="hs-card" style="display:block;"><b>' + esc(c.title) + '</b> <span class="hs-meta">' + esc(fmtWhen(c.scheduled_at)) + ' &middot; ' + esc(c.status) + ' &middot; ' + c.students.length + ' joined</span>' + delBtn(c) +
             (names ? '<div class="hs-meta" style="margin-top:6px;">' + names + '</div>' : '') + '</div>';
         }).join("");
       });
     }
 
     function setStat(id, v) { var e = $(id); if (e) e.textContent = v; }
+    function delBtn(c) { return isAdmin ? ' <button type="button" class="hs-end" data-del="' + c.id + '" style="margin-left:8px;padding:3px 9px;font-size:12px;">Delete</button>' : ""; }
     function blocked(t) { var b = $("tr-blocked"); b.style.display = "block"; b.innerHTML = t; }
 
     j("/api/session").then(function (r) { return r.json(); }).then(function (s) {
       if (!s.user) { location.href = "login.html"; return null; }
       $("tr-hello").textContent = "Welcome, " + s.user.full_name;
       
-      if (s.user.role !== "trainer" && s.user.role !== "admin") { location.href = "highschool.html"; return null; }
+      if (s.user.role !== "trainer" && s.user.role !== "admin") { location.href = "highschool.html"; return null; } isAdmin = s.user.role === "admin";
       return j("/api/hs/me").then(function (r) { return r.json(); });
     }).then(function (m) {
       if (!m) return;

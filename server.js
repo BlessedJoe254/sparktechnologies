@@ -3020,6 +3020,37 @@ app.get("/api/hs/students/:id", requireLogin, requireAnyRole(["trainer", "admin"
   }
 });
 
+app.post("/api/classes/:id/delete", requireLogin, requireRole("admin"), async (req, res) => {
+  let conn;
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid class." });
+    const [[cl]] = await pool.query("SELECT id, title FROM live_classes WHERE id = ?", [id]);
+    if (!cl) return res.status(404).json({ error: "Class not found." });
+    let pays = 0;
+    try {
+      const [[pc]] = await pool.query("SELECT COUNT(*) AS n FROM hs_class_payments WHERE class_id = ?", [id]);
+      pays = Number(pc.n || 0);
+    } catch (e) { pays = 0; }
+    if (pays > 0 && !(req.body && req.body.force)) {
+      return res.status(409).json({ error: "This class has " + pays + " payment record" + (pays === 1 ? "" : "s") + " that would also be deleted.", payments: pays });
+    }
+    conn = await pool.getConnection();
+    await conn.beginTransaction();
+    await conn.query("DELETE FROM live_attendance WHERE class_id = ?", [id]);
+    try { await conn.query("DELETE FROM hs_class_payments WHERE class_id = ?", [id]); } catch (e) {}
+    await conn.query("DELETE FROM live_classes WHERE id = ?", [id]);
+    await conn.commit();
+    res.json({ success: true });
+  } catch (err) {
+    if (conn) { try { await conn.rollback(); } catch (e) {} }
+    console.error("Delete class error:", err.message);
+    res.status(500).json({ error: "Could not delete the class." });
+  } finally {
+    if (conn) conn.release();
+  }
+});
+
 app.listen(PORT, () => {
   console.log("Spark Technologies server running at http://localhost:" + PORT);
   ensureAdminAccount();
