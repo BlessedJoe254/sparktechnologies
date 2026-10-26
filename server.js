@@ -2651,14 +2651,14 @@ app.post("/api/hs/timetable/add", requireLogin, requireRole("admin"), async (req
       return res.status(400).json({ error: "Enter the start and end time and the lesson." });
     }
     if (end_time <= start_time) return res.status(400).json({ error: "End time must be after the start time." });
-    const HS_SLOTS = ["08:00-09:00", "09:30-10:30", "11:00-12:00", "14:00-15:00", "15:30-16:00"];
-    if (!HS_SLOTS.includes(start_time + "-" + end_time)) return res.status(400).json({ error: "Choose one of the five lesson times." });
+    // any lesson time is allowed
+    // start and end were already checked above
     const HS_TEACHERS = { "English": "Christine Njoroge", "Mathematics": "Roy Njuki", "Biology": "Geoffrey Kimani", "Chemistry": "Henry Muigai", "Physics": "Maryanne Atieno" };
     const subjectName = String(subject).trim();
-    if (!HS_TEACHERS[subjectName]) return res.status(400).json({ error: "Choose one of the five subjects." });
+    const teacherName = String(teacher || "").trim().slice(0, 120) || HS_TEACHERS[subjectName] || null;
     await pool.query(
       "INSERT INTO hs_timetable (course_id, day_no, class_date, start_time, end_time, subject, teacher, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      [course.id, day, dateVal, start_time, end_time, String(subject).trim().slice(0, 120), HS_TEACHERS[subjectName], notes ? String(notes).trim().slice(0, 300) : null]
+      [course.id, day, dateVal, start_time, end_time, String(subject).trim().slice(0, 120), teacherName, notes ? String(notes).trim().slice(0, 300) : null]
     );
     res.json({ success: true });
   } catch (err) {
