@@ -47,18 +47,19 @@
     .pay-card input:focus { outline:2px solid #1f8a5b; border-color:#1f8a5b; }
     .pay-btns { display:flex; gap:8px; margin-top:12px; } .pay-btns .btn { flex:1; }
     #pay-msg { font-size:13px; margin-top:8px; min-height:16px; }
+    /* tt-small: same grid as the big screen, scaled down */
     @media (max-width: 700px) {
       .hs-wrap { overflow-x:visible; }
-      .tt { min-width:0; border:0; background:transparent; border-radius:0; overflow:visible; }
-      .tt thead { display:none; }
-      .tt, .tt tbody, .tt tr, .tt td { display:block; width:100%; box-sizing:border-box; }
-      .tt tr { background:#fff; border:1px solid rgba(0,0,0,.14); border-radius:14px; margin:0 0 10px; overflow:hidden; }
-      .tt td { height:auto; text-align:left; border-left:0; padding:8px 12px; }
-      .tt td:first-child { background:#1f8a5b; color:#fff; font-size:14px; width:100%; }
-      .tt tr:nth-child(even) td:not(:first-child) { background:transparent; }
-      .tt td[data-label]::before { content:attr(data-label); display:block; font-size:11px; letter-spacing:.8px; font-weight:700; color:#1f8a5b; margin-bottom:4px; }
-      .tt td:has(> .none) { display:none; }
-      .tt tr:has(td[colspan]) { background:#fff8e1; border-style:dashed; }
+      .tt { min-width:0; width:100%; table-layout:fixed; font-size:9px; border-radius:8px; }
+      .tt th { padding:7px 1px; font-size:7.5px; letter-spacing:0; }
+      .tt th:first-child { width:42px; }
+      .tt td { padding:4px 2px; height:auto; font-size:8.5px; word-break:break-word; overflow-wrap:anywhere; }
+      .tt td:first-child { padding:4px 2px; font-size:8px; white-space:normal; text-align:center; }
+      .tt-c { padding:3px 3px; margin:0 0 3px; border-left-width:2px; border-radius:5px; }
+      .tt-c b { font-size:9px; line-height:1.15; }
+      .tt-c span { font-size:7.5px; line-height:1.2; }
+      .tt-del { float:none; display:block; font-size:7.5px; margin-left:auto; }
+      .tt td[colspan] { font-size:8px; padding:3px; }
       .hs-edit .row > * { flex:1 1 100%; }
       .hs-ptable { display:block; overflow-x:auto; white-space:nowrap; }
     }
@@ -291,7 +292,7 @@
             var gap = lastEnd ? mins(k.split("-")[0]) - mins(lastEnd) : 0; if (gap > 0) html += '<tr><td colspan="6" style="background:#fff8e1;color:#8a6d00;text-align:center;font-weight:600;height:auto;padding:6px;">' + breakLabel(gap) + '</td></tr>'; lastEnd = k.split("-")[1]; html += "<tr><td>" + esc(slotLabel(k)) + "</td>";
             for (var day = 1; day <= 5; day++) {
               var here = entries.filter(function (e) { return e.day_no === day && (hm(e.start_time) + "-" + hm(e.end_time)) === k; });
-              html += '<td data-label="' + DAYS[day] + '">' + (here.length ? here.map(function (e) {
+              html += "<td>" + (here.length ? here.map(function (e) {
                 return '<div class="tt-c">' + (me && me.role === "admin" ? '<button class="tt-del" data-del="' + e.id + '">Delete</button>' : "") +
                   "<b>" + esc(e.subject) + "</b>" + ownerSpan(e) +
                   (e.class_date ? "<span>" + esc(fmtDate(e.class_date)) + "</span>" : "") + (e.notes ? "<span>" + esc(e.notes) + "</span>" : "") + "</div>";
