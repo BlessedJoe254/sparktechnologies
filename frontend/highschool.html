@@ -89,7 +89,8 @@
         <div class="row">
           <select id="t-day"><option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option><option value="4">Thursday</option><option value="5">Friday</option></select>
           <input id="t-date" type="date" title="Date (optional, sets the day)">
-          <select id="t-slot"><option value="08:00|09:00">Lesson 1: 8:00 - 9:00</option><option value="09:30|10:30">Lesson 2: 9:30 - 10:30</option><option value="11:00|12:00">Lesson 3: 11:00 - 12:00</option><option value="14:00|15:00">Lesson 4: 2:00 - 3:00</option><option value="15:30|16:00">Lesson 5: 3:30 - 4:00</option></select>
+          <select id="t-slot"><option value="">Pick a lesson time (or set your own)</option><option value="08:00|09:00">Lesson 1: 8:00 - 9:00</option><option value="09:30|10:30">Lesson 2: 9:30 - 10:30</option><option value="11:00|12:00">Lesson 3: 11:00 - 12:00</option><option value="13:30|14:30">Lesson 4: 1:30 - 2:30</option><option value="15:00|16:00">Lesson 5: 3:00 - 4:00</option></select>
+          <input id="t-start" type="time" value="08:00" title="Start time"><input id="t-end" type="time" value="09:00" title="End time">
           <select id="t-subject"><option value="">Subject</option><option value="English">English - Christine Njoroge</option><option value="Mathematics">Mathematics - Roy Njuki</option><option value="Biology">Biology - Geoffrey Kimani</option><option value="Chemistry">Chemistry - Henry Muigai</option><option value="Physics">Physics - Maryanne Atieno</option></select>
           
           <input id="t-notes" type="text" placeholder="Notes (optional)" maxlength="300">
@@ -152,9 +153,13 @@
       var v = document.getElementById("t-subject").value.trim(), a = ASSIGNED[v];
       return a ? { subject: a.subject, teacher: a.name } : { subject: v, teacher: TEACHERS[v] || "" };
     }
-    var SLOTS = ["08:00-09:00", "09:30-10:30", "11:00-12:00", "14:00-15:00", "15:30-16:00"];
+    var SLOTS = ["08:00-09:00", "09:30-10:30", "11:00-12:00", "13:30-14:30", "15:00-16:00"];
     var TEACHERS = { "English": "Christine Njoroge", "Mathematics": "Roy Njuki", "Biology": "Geoffrey Kimani", "Chemistry": "Henry Muigai", "Physics": "Maryanne Atieno" };
-    var SLOT_LABELS = { "08:00-09:00": "8:00 - 9:00", "09:30-10:30": "9:30 - 10:30", "11:00-12:00": "11:00 - 12:00", "14:00-15:00": "2:00 - 3:00", "15:30-16:00": "3:30 - 4:00" };
+    function hm(x) { return String(x == null ? "" : x).slice(0, 5); }
+    function mins(x) { var p = hm(x).split(":"); return Number(p[0]) * 60 + Number(p[1]); }
+    function t12(x) { var p = hm(x).split(":"), H = Number(p[0]); return (((H + 11) % 12) + 1) + ":" + p[1]; }
+    function slotLabel(k) { var p = k.split("-"); return t12(p[0]) + " - " + t12(p[1]); }
+    function breakLabel(g) { return g < 60 ? g + " minute break" : Math.floor(g / 60) + " hour" + (g % 60 ? " " + (g % 60) + " minute" : "") + " break"; }
     function esc(s) { var d = document.createElement("div"); d.textContent = s == null ? "" : String(s); return d.innerHTML; }
     function j(url, opt) { return fetch(url, Object.assign({ credentials: "include" }, opt || {})); }
     function isStudent() { return me && me.role === "student"; }
@@ -259,8 +264,8 @@
       j("/api/hs/timetable").then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
         var box = document.getElementById("hs-table");
         if (!d) { box.innerHTML = '<div class="hs-empty">Could not load the timetable.</div>'; return; }
-        var entries = (d.entries || []).filter(function (e) { return e.day_no >= 1 && e.day_no <= 5 && SLOTS.indexOf(e.start_time + "-" + e.end_time) >= 0; });
-        var slots = SLOTS.slice();
+        var entries = (d.entries || []).filter(function (e) { return e.day_no >= 1 && e.day_no <= 5; });
+        var slots = SLOTS.slice(); entries.forEach(function (e) { var kk = hm(e.start_time) + "-" + hm(e.end_time); if (slots.indexOf(kk) < 0) slots.push(kk); }); slots.sort(); var lastEnd = null;
         var blank = !entries.length;
         var html = '<table class="tt"><thead><tr><th>TIME</th>';
         for (var n = 1; n <= 5; n++) html += "<th>" + DAYS[n] + "</th>";
@@ -268,9 +273,9 @@
         if (false) {
         } else {
           slots.forEach(function (k) {
-            html += "<tr><td>" + esc(SLOT_LABELS[k] || k) + "</td>";
+            var gap = lastEnd ? mins(k.split("-")[0]) - mins(lastEnd) : 0; if (gap > 0) html += '<tr><td colspan="6" style="background:#fff8e1;color:#8a6d00;text-align:center;font-weight:600;height:auto;padding:6px;">' + breakLabel(gap) + '</td></tr>'; lastEnd = k.split("-")[1]; html += "<tr><td>" + esc(slotLabel(k)) + "</td>";
             for (var day = 1; day <= 5; day++) {
-              var here = entries.filter(function (e) { return e.day_no === day && (e.start_time + "-" + e.end_time) === k; });
+              var here = entries.filter(function (e) { return e.day_no === day && (hm(e.start_time) + "-" + hm(e.end_time)) === k; });
               html += "<td>" + (here.length ? here.map(function (e) {
                 return '<div class="tt-c">' + (me && me.role === "admin" ? '<button class="tt-del" data-del="' + e.id + '">Delete</button>' : "") +
                   "<b>" + esc(e.subject) + "</b>" + ownerSpan(e) +
@@ -292,6 +297,11 @@
       j("/api/hs/timetable/" + id + "/delete", { method: "POST" }).then(loadTable);
     });
 
+    document.getElementById("t-slot").addEventListener("change", function () {
+      var p = this.value.split("|");
+      if (p.length === 2) { document.getElementById("t-start").value = p[0]; document.getElementById("t-end").value = p[1]; }
+    });
+
     document.getElementById("t-date").addEventListener("change", function () {
       var v = this.value, msg = document.getElementById("hs-msg");
       if (!v) return;
@@ -302,8 +312,9 @@
 
     document.getElementById("t-add").addEventListener("click", function () {
       var msg = document.getElementById("hs-msg");
-      var body = { day_no: document.getElementById("t-day").value, class_date: document.getElementById("t-date").value, start_time: (document.getElementById("t-slot").value.split("|")[0] || ""), end_time: (document.getElementById("t-slot").value.split("|")[1] || ""),
+      var body = { day_no: document.getElementById("t-day").value, class_date: document.getElementById("t-date").value, start_time: document.getElementById("t-start").value, end_time: document.getElementById("t-end").value,
         subject: pickSubject().subject, teacher: pickSubject().teacher, notes: document.getElementById("t-notes").value.trim() };
+      if (!body.start_time || !body.end_time || body.start_time >= body.end_time) { msg.style.color = "#b3261e"; msg.textContent = "Set a start time that is before the end time."; return; }
       j("/api/hs/timetable/add", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
         .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
         .then(function (res) {
